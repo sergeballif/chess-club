@@ -36,6 +36,50 @@ export default function TeacherView() {
   const boardRef = useRef();
   const timerAnchorRef = useRef();
   const [boardOrientation, setBoardOrientation] = useState('white');
+  const pendingActionRef = useRef(null);
+  const initialFenRef = useRef(game.fen());
+  const moveHistoryRef = useRef(moveHistory);
+
+  useEffect(() => {
+    moveHistoryRef.current = moveHistory;
+  }, [moveHistory]);
+
+  function buildGameAtIndex(history, targetIndex, startingFen) {
+    try {
+      const chess = new Chess(startingFen);
+      const limit = Math.min(targetIndex, history.length);
+      for (let i = 0; i < limit; i++) {
+        const move = chess.move(history[i]);
+        if (!move) {
+          return null;
+        }
+      }
+      return chess;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function deriveCurrentMoveIndex(history, fenString, startingFen) {
+    try {
+      const chess = new Chess(startingFen);
+      if (fenString === chess.fen()) {
+        return 0;
+      }
+      for (let i = 0; i < history.length; i++) {
+        const move = chess.move(history[i]);
+        if (!move) {
+          break;
+        }
+        if (chess.fen() === fenString) {
+          return i + 1;
+        }
+      }
+    } catch (e) {
+      // Fallback handled below
+    }
+    return history.length;
+  }
 
   // Update boardWidth on resize
   useEffect(() => {
@@ -104,11 +148,33 @@ export default function TeacherView() {
 
   // --- Listen for board_update events to sync teacher board with backend ---
   useEffect(() => {
-    function handleBoardUpdate({ fen: newFen, moveHistory: newHistory }) {
+    function handleBoardUpdate({ fen: newFen, moveHistory: newHistory, initialFen }) {
+      const pending = pendingActionRef.current;
+      pendingActionRef.current = null;
+      let history = newHistory || [];
+      if (initialFen) {
+        initialFenRef.current = initialFen;
+      } else if (history.length === 0) {
+        initialFenRef.current = newFen;
+      }
+      const previousHistory = moveHistoryRef.current || [];
+      if (
+        pending?.type === 'jump' &&
+        history.length < previousHistory.length &&
+        previousHistory.slice(0, history.length).every((move, idx) => move === history[idx])
+      ) {
+        history = previousHistory;
+      }
       setFen(newFen);
-      setMoveHistory(newHistory || []);
+      setMoveHistory(history);
+      moveHistoryRef.current = history;
       setGame(new Chess(newFen));
-      setCurrentMove((newHistory || []).length);
+      let targetIndex = typeof pending?.index === 'number' ? pending.index : null;
+      if (typeof targetIndex !== 'number') {
+        targetIndex = deriveCurrentMoveIndex(history, newFen, initialFenRef.current);
+      }
+      const clampedIndex = Math.max(0, Math.min(history.length, targetIndex));
+      setCurrentMove(clampedIndex);
       setReveal(false); // Reset reveal if needed
     }
     if (window.socket) {
@@ -122,44 +188,44 @@ export default function TeacherView() {
   }, []);
 
   // Handle a move from Chessboard
-  function handleMove(moveObj, newFen) {
+  function handleMove(moveObj) {
     // Create game state from current position
-    const gameCopy = new Chess();
-    for (let i = 0; i < currentMove; i++) {
-      gameCopy.move(moveHistory[i]);
-    }
-    
+    const gameCopy = new Chess(fen);
+
     // Make the new move
     const move = gameCopy.move(moveObj);
     if (move) {
       // Always truncate at current position and add new move
       // This ensures we only show the current branch
       const newHistory = [...moveHistory.slice(0, currentMove), move.san];
-      
+
       setGame(gameCopy);
       setFen(gameCopy.fen());
       setMoveHistory(newHistory);
-      setCurrentMove(currentMove + 1);
+      moveHistoryRef.current = newHistory;
+      const nextIndex = newHistory.length;
+      setCurrentMove(nextIndex);
       setReveal(false); // Reset reveal
       if (window.socket) window.socket.emit('reset_reveal', { gameId });
       setTimer(timerLength); // Reset timer
       // Broadcast board update
-      updateBoard(gameId, gameCopy.fen(), newHistory);
+      pendingActionRef.current = { type: 'move', index: nextIndex };
+      updateBoard(gameId, gameCopy.fen(), newHistory, initialFenRef.current);
     }
   }
 
   // Jump to a specific move in history
   function jumpToMove(idx) {
-    const gameCopy = new Chess();
-    // Play moves up to and including the clicked move
-    for (let i = 0; i < idx; i++) {
-      gameCopy.move(moveHistory[i]);
+    const gameCopy = buildGameAtIndex(moveHistory, idx, initialFenRef.current);
+    if (!gameCopy) {
+      return;
     }
     setGame(gameCopy);
     setFen(gameCopy.fen());
     setCurrentMove(idx);
     // Broadcast board update with full history but current position
-    updateBoard(gameId, gameCopy.fen(), moveHistory);
+    pendingActionRef.current = { type: 'jump', index: idx };
+    updateBoard(gameId, gameCopy.fen(), moveHistory, initialFenRef.current);
   }
 
   // Go back one move
@@ -184,11 +250,14 @@ export default function TeacherView() {
       setGame(chess);
       setFen(chess.fen());
       setMoveHistory([]);
+      moveHistoryRef.current = [];
       setCurrentMove(0);
+      initialFenRef.current = chess.fen();
       setReveal(false); // Reset reveal
       if (window.socket) window.socket.emit('reset_reveal', { gameId });
       // Broadcast board update
-      updateBoard(gameId, chess.fen(), []);
+      pendingActionRef.current = { type: 'move', index: 0 };
+      updateBoard(gameId, chess.fen(), [], initialFenRef.current);
     } catch (e) {
       // Defensive: error should be caught in FENPanel
     }
@@ -208,7 +277,7 @@ export default function TeacherView() {
   // On mount, broadcast initial board state
   useEffect(() => {
     if (isInitialMount.current) {
-      updateBoard(gameId, fen, moveHistory);
+      updateBoard(gameId, fen, moveHistory, initialFenRef.current);
       setMode(gameId, mode, reveal);
       isInitialMount.current = false;
     }
