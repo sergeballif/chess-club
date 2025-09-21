@@ -100,4 +100,71 @@ describe('TeacherView move navigation', () => {
       expect(updateBoard).toHaveBeenCalledWith('default-game', startFen, history, startFen);
     });
   });
+
+  it('retains future moves while browsing and only truncates when the history branches', async () => {
+    const startFen = new Chess().fen();
+    const chess = new Chess();
+    const firstSan = chess.move('e4').san;
+    const afterFirstFen = chess.fen();
+    const secondSan = chess.move('e5').san;
+    const afterSecondFen = chess.fen();
+    const thirdSan = chess.move('Nf3').san;
+    const finalFen = chess.fen();
+    const history = [firstSan, secondSan, thirdSan];
+
+    render(<TeacherView />);
+
+    act(() => {
+      __emitSocketEvent('board_update', {
+        fen: finalFen,
+        moveHistory: history,
+        initialFen: startFen
+      });
+    });
+
+    await screen.findByText(thirdSan);
+    updateBoard.mockClear();
+    expect(screen.getByText('3/3')).toBeInTheDocument();
+
+    const backButton = screen.getByRole('button', { name: /</ });
+    act(() => {
+      fireEvent.click(backButton);
+    });
+
+    await waitFor(() => {
+      expect(updateBoard).toHaveBeenLastCalledWith('default-game', afterSecondFen, history, startFen);
+    });
+
+    act(() => {
+      __emitSocketEvent('board_update', {
+        fen: afterSecondFen,
+        moveHistory: history,
+        initialFen: startFen
+      });
+    });
+
+    expect(screen.getByText('2/3')).toBeInTheDocument();
+    expect(screen.getByText(thirdSan)).toBeInTheDocument();
+
+    updateBoard.mockClear();
+    const branchChess = new Chess();
+    branchChess.move('e4');
+    branchChess.move('e5');
+    const branchSan = branchChess.move('Nc3').san;
+    const branchFen = branchChess.fen();
+    const branchedHistory = [firstSan, secondSan, branchSan];
+
+    act(() => {
+      __emitSocketEvent('board_update', {
+        fen: branchFen,
+        moveHistory: branchedHistory,
+        initialFen: startFen
+      });
+    });
+
+    expect(screen.getByText('3/3')).toBeInTheDocument();
+    expect(screen.getByText(branchSan)).toBeInTheDocument();
+    expect(screen.queryByText(thirdSan)).not.toBeInTheDocument();
+  });
+
 });
