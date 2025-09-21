@@ -59,9 +59,11 @@ export function retractVote(gameId, move, userId) {
   socket.emit('retract_vote', { gameId, move, userId });
 }
 
-export function updateBoard(gameId, fen, moveHistory) {
-  console.log('[socket.js] updateBoard called:', { gameId, fen, moveHistory });
-  socket.emit('update_board', { gameId, fen, moveHistory });
+export function updateBoard(gameId, fen, moveHistory, initialFen) {
+  const payload = { gameId, fen, moveHistory };
+  if (initialFen) payload.initialFen = initialFen;
+  console.log('[socket.js] updateBoard called:', payload);
+  socket.emit('update_board', payload);
   console.log('[socket.js] update_board emitted');
 }
 
