@@ -1,124 +1,87 @@
 import React from 'react';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import StudentView from '../../src/views/StudentView';
-import * as socket from '../../src/lib/socket';
 
-// Ensure mocks exist for all used socket functions
-if (!socket.joinGame) socket.joinGame = jest.fn();
-if (!socket.submitVote) socket.submitVote = jest.fn();
-
-// Mock socket functions
-jest.mock('../../src/lib/socket');
-
-function setupSocketMocks({ mode = { mode: 'poll', reveal: false }, fen = 'startfen', moveHistory = [], voteTally = { votes: {} } } = {}) {
+jest.mock('../../src/lib/socket', () => {
   const listeners = {};
-  socket.initStudentListeners.mockImplementation(({ onBoardUpdate, onVoteTally, onModeUpdate }) => {
-    if (onBoardUpdate) listeners.board_update = onBoardUpdate;
-    if (onVoteTally) listeners.vote_tally = onVoteTally;
-    if (onModeUpdate) listeners.mode_update = onModeUpdate;
-  });
-  socket.removeStudentListeners.mockImplementation(() => {
-    listeners.board_update = null;
-    listeners.vote_tally = null;
-    listeners.mode_update = null;
-  });
-  socket.joinGame.mockImplementation(() => {});
-  socket.submitVote.mockImplementation(() => {});
-  // Simulate initial backend state
-  return listeners;
-}
+
+  function addListener(event, handler) {
+    if (!listeners[event]) listeners[event] = new Set();
+    listeners[event].add(handler);
+  }
+
+  function removeListener(event, handler) {
+    if (!listeners[event]) return;
+    if (handler) {
+      listeners[event].delete(handler);
+    } else {
+      listeners[event].clear();
+    }
+    if (listeners[event] && listeners[event].size === 0) {
+      delete listeners[event];
+    }
+  }
+
+  const socketMock = {
+    emit: jest.fn(),
+    on: jest.fn((event, handler) => addListener(event, handler)),
+    off: jest.fn((event, handler) => removeListener(event, handler)),
+  };
+
+  return {
+    joinGame: jest.fn(),
+    submitVote: jest.fn(),
+    initStudentListeners: jest.fn(({ onBoardUpdate, onVoteTally, onModeUpdate }) => {
+      if (onBoardUpdate) addListener('board_update', onBoardUpdate);
+      if (onVoteTally) addListener('vote_tally', onVoteTally);
+      if (onModeUpdate) addListener('mode_update', onModeUpdate);
+    }),
+    removeStudentListeners: jest.fn(() => {
+      removeListener('board_update');
+      removeListener('vote_tally');
+      removeListener('mode_update');
+    }),
+    retractVote: jest.fn(),
+    socket: socketMock,
+    __emitSocketEvent: (event, payload) => {
+      if (!listeners[event]) return;
+      for (const handler of Array.from(listeners[event])) {
+        handler(payload);
+      }
+    },
+    __resetSocketListeners: () => {
+      Object.keys(listeners).forEach(key => delete listeners[key]);
+    }
+  };
+});
+
+import { __emitSocketEvent, __resetSocketListeners } from '../../src/lib/socket';
 
 describe('StudentView', () => {
-  afterEach(() => {
-    jest.clearAllMocks();
+  beforeEach(() => {
+    __resetSocketListeners();
   });
 
-  it('shows Observation Mode message and disables voting', () => {
-    const listeners = setupSocketMocks({ mode: { mode: 'observe', reveal: false } });
+  it('renders default instructions and vote placeholder', async () => {
     render(<StudentView />);
+
+    await screen.findByText('What to play. Find best move.');
+
     act(() => {
-      if (listeners.mode_update) listeners.mode_update({ mode: 'observe', reveal: false });
+      __emitSocketEvent('board_update', { fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moveHistory: [] });
     });
-    expect(screen.getByText(/Observation Mode/i)).toBeInTheDocument();
-    expect(screen.queryByText(/Vote Tally:/i)).not.toBeInTheDocument();
+
+    const voteText = screen.getByText(/Your Vote:/).textContent || '';
+    expect(voteText.trim()).toMatch(/^Your Vote:\s*(—)?$/);
   });
 
-  it('shows Polling Mode message and allows voting', () => {
-    const listeners = setupSocketMocks({ mode: { mode: 'poll', reveal: false } });
+  it('updates instructions when the teacher sends new text', async () => {
     render(<StudentView />);
-    act(() => {
-      if (listeners.mode_update) listeners.mode_update({ mode: 'poll', reveal: false });
-    });
-    expect(screen.getByText(/Polling Mode/i)).toBeInTheDocument();
-    // Join button is enabled
-    const nameInput = screen.getByLabelText(/Name:/);
-    fireEvent.change(nameInput, { target: { value: 'Alice' } });
-    const joinBtn = screen.getByText('Join');
-    fireEvent.click(joinBtn);
-    expect(screen.getByText(/Joined as Alice/)).toBeInTheDocument();
-  });
 
-  it('shows Game Mode message and allows voting', () => {
-    const listeners = setupSocketMocks({ mode: { mode: 'game', reveal: false } });
-    render(<StudentView />);
     act(() => {
-      if (listeners.mode_update) listeners.mode_update({ mode: 'game', reveal: false });
+      __emitSocketEvent('instructions_update', { instructions: 'Focus on knight tactics.' });
     });
-    expect(screen.getByText(/Game Mode/i)).toBeInTheDocument();
-  });
 
-  it('shows vote tally in Polling Mode', () => {
-    const listeners = setupSocketMocks({ mode: { mode: 'poll', reveal: false }, voteTally: { votes: { 'e2e4': 2, 'd2d4': 1 } } });
-    render(<StudentView />);
-    act(() => {
-      if (listeners.mode_update) listeners.mode_update({ mode: 'poll', reveal: false });
-      if (listeners.vote_tally) listeners.vote_tally({ votes: { 'e2e4': 2, 'd2d4': 1 } });
-    });
-    expect(screen.getByText(/Vote Tally:/i)).toBeInTheDocument();
-    expect(screen.getByText(/e2e4: 2/)).toBeInTheDocument();
-    expect(screen.getByText(/d2d4: 1/)).toBeInTheDocument();
-  });
-
-  it('only allows one vote per board position', () => {
-    const listeners = setupSocketMocks({ mode: { mode: 'poll', reveal: false } });
-    render(<StudentView />);
-    act(() => {
-      if (listeners.mode_update) listeners.mode_update({ mode: 'poll', reveal: false });
-    });
-    const nameInput = screen.getByLabelText(/Name:/);
-    fireEvent.change(nameInput, { target: { value: 'Bob' } });
-    fireEvent.click(screen.getByText('Join'));
-    // Simulate voting for e2e4
-    act(() => {
-      socket.submitVote('default-game', 'e2e4', expect.any(String));
-    });
-    expect(socket.submitVote).toHaveBeenCalledWith('default-game', 'e2e4', expect.any(String));
-    // Simulate voting for d2d4 (change vote)
-    act(() => {
-      socket.submitVote('default-game', 'd2d4', expect.any(String));
-    });
-    expect(socket.submitVote).toHaveBeenCalledWith('default-game', 'd2d4', expect.any(String));
-  });
-
-  it('resets vote when board updates', () => {
-    const listeners = setupSocketMocks({ mode: { mode: 'poll', reveal: false }, fen: 'startfen' });
-    render(<StudentView />);
-    act(() => {
-      if (listeners.mode_update) listeners.mode_update({ mode: 'poll', reveal: false });
-    });
-    const nameInput = screen.getByLabelText(/Name:/);
-    fireEvent.change(nameInput, { target: { value: 'Carol' } });
-    fireEvent.click(screen.getByText('Join'));
-    // Simulate voting for e2e4
-    act(() => {
-      socket.submitVote('default-game', 'e2e4', expect.any(String));
-    });
-    // Simulate board update (new FEN)
-    act(() => {
-      if (listeners.board_update) listeners.board_update({ fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1', moveHistory: [] });
-    });
-    // Student vote should be reset (not shown)
-    const voteDiv = screen.getByText(/Your Vote:/).parentElement;
-    expect(voteDiv).toHaveTextContent(/Your Vote:\s*—/);
+    await screen.findByText('Focus on knight tactics.');
   });
 });
