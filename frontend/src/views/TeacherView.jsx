@@ -44,6 +44,7 @@ export default function TeacherView() {
     moveHistoryRef.current = moveHistory;
   }, [moveHistory]);
 
+
   function buildGameAtIndex(history, targetIndex, startingFen) {
     try {
       const chess = new Chess(startingFen);
@@ -149,14 +150,17 @@ export default function TeacherView() {
   // --- Listen for board_update events to sync teacher board with backend ---
   useEffect(() => {
     function handleBoardUpdate({ fen: newFen, moveHistory: newHistory, initialFen }) {
+
       const pending = pendingActionRef.current;
       pendingActionRef.current = null;
       let history = newHistory || [];
+
       if (initialFen) {
         initialFenRef.current = initialFen;
       } else if (history.length === 0) {
         initialFenRef.current = newFen;
       }
+
       const previousHistory = moveHistoryRef.current || [];
       if (
         pending?.type === 'jump' &&
@@ -170,6 +174,7 @@ export default function TeacherView() {
       moveHistoryRef.current = history;
       setGame(new Chess(newFen));
       let targetIndex = typeof pending?.index === 'number' ? pending.index : null;
+
       if (typeof targetIndex !== 'number') {
         targetIndex = deriveCurrentMoveIndex(history, newFen, initialFenRef.current);
       }
@@ -203,6 +208,7 @@ export default function TeacherView() {
       setFen(gameCopy.fen());
       setMoveHistory(newHistory);
       moveHistoryRef.current = newHistory;
+
       const nextIndex = newHistory.length;
       setCurrentMove(nextIndex);
       setReveal(false); // Reset reveal
@@ -210,6 +216,7 @@ export default function TeacherView() {
       setTimer(timerLength); // Reset timer
       // Broadcast board update
       pendingActionRef.current = { type: 'move', index: nextIndex };
+
       updateBoard(gameId, gameCopy.fen(), newHistory, initialFenRef.current);
     }
   }
@@ -225,6 +232,7 @@ export default function TeacherView() {
     setCurrentMove(idx);
     // Broadcast board update with full history but current position
     pendingActionRef.current = { type: 'jump', index: idx };
+
     updateBoard(gameId, gameCopy.fen(), moveHistory, initialFenRef.current);
   }
 
@@ -257,6 +265,7 @@ export default function TeacherView() {
       if (window.socket) window.socket.emit('reset_reveal', { gameId });
       // Broadcast board update
       pendingActionRef.current = { type: 'move', index: 0 };
+
       updateBoard(gameId, chess.fen(), [], initialFenRef.current);
     } catch (e) {
       // Defensive: error should be caught in FENPanel

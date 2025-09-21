@@ -166,4 +166,5 @@ describe('TeacherView move navigation', () => {
     expect(screen.getByText(branchSan)).toBeInTheDocument();
     expect(screen.queryByText(thirdSan)).not.toBeInTheDocument();
   });
+
 });
