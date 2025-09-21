@@ -1,0 +1,68 @@
+.moveHistoryPanel {
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 16px;
+  min-width: 180px;
+  font-size: 1rem;
+  color: #222;
+}
+.moveHistoryHeader {
+  font-weight: bold;
+  margin-bottom: 8px;
+  text-align: center;
+  color: #222;
+}
+.moveHistoryTable {
+  display: grid;
+  grid-template-columns: 32px 1fr 1fr;
+  gap: 2px;
+  margin-bottom: 8px;
+}
+.moveHistoryColHeader {
+  font-weight: bold;
+  text-align: center;
+  background: #f0d9b5;
+  border-radius: 4px;
+  padding: 2px 0;
+  color: #222;
+}
+.moveHistoryRowNum {
+  text-align: right;
+  padding-right: 4px;
+  color: #888;
+}
+.moveHistoryMove {
+  cursor: pointer;
+  text-align: center;
+  border-radius: 4px;
+  padding: 2px 0;
+  transition: background 0.15s;
+  color: #222;
+}
+.moveHistoryMove:hover {
+  background: #e9f5db;
+}
+.moveHistoryCurrent {
+  background: #ffe066 !important;
+  font-weight: bold;
+  color: #222 !important;
+}
+.moveHistoryNav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.moveHistoryNav button {
+  padding: 2px 8px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: #f0d9b5;
+  cursor: pointer;
+  color: #222;
+}
+.moveHistoryNav button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
