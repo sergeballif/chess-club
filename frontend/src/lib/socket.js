@@ -4,7 +4,7 @@ console.log('[socket.js] Module loaded');
 
 import { io } from 'socket.io-client';
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:10000';
+const SOCKET_URL = window.CHESS_CLUB_CONFIG?.socketUrl || 'http://localhost:10000';
 
 // Singleton socket instance
 export const socket = io(SOCKET_URL, {
