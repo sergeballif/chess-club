@@ -2,11 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { Chess } from 'chess.js';
 import { Chessboard as ReactChessboard } from 'react-chessboard';
 
+const PROMOTION_SYMBOLS = {
+  w: { q: '♕', r: '♖', b: '♗', n: '♘' },
+  b: { q: '♛', r: '♜', b: '♝', n: '♞' },
+};
+
 export default function Chessboard({ fen, onMove, orientation: propsOrientation = 'white', boardWidth = 400, allowDrag = true, allowMove = true, voteArrows = [], onFlip }) {
   const [game, setGame] = useState(new Chess(fen || undefined));
   const [currentFen, setCurrentFen] = useState(game.fen());
   const [selectedSquare, setSelectedSquare] = useState(null);
   const [legalMoves, setLegalMoves] = useState([]);
+  const [pendingPromotion, setPendingPromotion] = useState(null); // { from, to }
   const [orientation, setOrientation] = useState(
     typeof propsOrientation === 'string' ? propsOrientation : 'white'
   );
@@ -54,11 +60,13 @@ export default function Chessboard({ fen, onMove, orientation: propsOrientation 
       const moves = game.moves({ square: selectedSquare, verbose: true });
       const move = moves.find(m => m.to === square);
       if (move) {
-        const moveObj = { from: selectedSquare, to: square };
         if (move.flags.includes('p')) {
-          moveObj.promotion = 'q'; // fallback for click-to-move
+          setPendingPromotion({ from: selectedSquare, to: square });
+          setSelectedSquare(null);
+          setLegalMoves([]);
+          return;
         }
-        doMove(moveObj);
+        doMove({ from: selectedSquare, to: square });
         setSelectedSquare(null);
         setLegalMoves([]);
         return;
@@ -76,6 +84,13 @@ export default function Chessboard({ fen, onMove, orientation: propsOrientation 
     } else {
       setSelectedSquare(null);
       setLegalMoves([]);
+    }
+  }
+
+  function handlePromotionSelect(piece) {
+    if (pendingPromotion) {
+      doMove({ from: pendingPromotion.from, to: pendingPromotion.to, promotion: piece });
+      setPendingPromotion(null);
     }
   }
 
@@ -157,8 +172,31 @@ export default function Chessboard({ fen, onMove, orientation: propsOrientation 
     );
   }
 
+  const promotionSymbols = PROMOTION_SYMBOLS[game.turn()] || PROMOTION_SYMBOLS.w;
+
   return (
     <div style={{ maxWidth: boardWidth, margin: '0 auto', position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
+      {/* PROMOTION DIALOG */}
+      {pendingPromotion && (
+        <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.55)', zIndex: 20, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8 }}>
+          <div style={{ background: '#fff', borderRadius: 10, padding: '16px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10, boxShadow: '0 4px 24px rgba(0,0,0,0.35)' }}>
+            <div style={{ fontWeight: 'bold', fontSize: 15, color: '#333', marginBottom: 2 }}>Promote to:</div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {['q', 'r', 'b', 'n'].map(piece => (
+                <button
+                  key={piece}
+                  onClick={() => handlePromotionSelect(piece)}
+                  style={{ fontSize: boardWidth / 8, lineHeight: 1, background: '#f5f5f5', border: '2px solid #ccc', borderRadius: 6, padding: '4px 6px', cursor: 'pointer' }}
+                  title={{ q: 'Queen', r: 'Rook', b: 'Bishop', n: 'Knight' }[piece]}
+                >
+                  {promotionSymbols[piece]}
+                </button>
+              ))}
+            </div>
+            <button onClick={() => setPendingPromotion(null)} style={{ fontSize: 12, color: '#888', background: 'none', border: 'none', cursor: 'pointer', marginTop: 2 }}>Cancel</button>
+          </div>
+        </div>
+      )}
       {/* ARROW OVERLAY */}
       {voteArrows.length > 0 && (
         <ArrowOverlay arrows={voteArrows} boardWidth={boardWidth} />
