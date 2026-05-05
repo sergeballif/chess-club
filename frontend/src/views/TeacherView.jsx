@@ -4,7 +4,7 @@ import MoveHistory from '../components/MoveHistory';
 import FENPanel from '../components/FENPanel';
 import MoveVoting from '../components/MoveVoting';
 import { Chess } from 'chess.js';
-import { joinGame, updateBoard, setMode, socket } from '../lib/socket';
+import { joinGame, updateBoard, setMode, getTeacherPassword, socket } from '../lib/socket';
 
 export default function TeacherView() {
   // Teacher always joins the game room on mount
@@ -212,7 +212,7 @@ export default function TeacherView() {
       const nextIndex = newHistory.length;
       setCurrentMove(nextIndex);
       setReveal(false); // Reset reveal
-      if (window.socket) window.socket.emit('reset_reveal', { gameId });
+      if (window.socket) window.socket.emit('reset_reveal', { gameId, password: getTeacherPassword() });
       setTimer(timerLength); // Reset timer
       // Broadcast board update
       pendingActionRef.current = { type: 'move', index: nextIndex };
@@ -262,7 +262,7 @@ export default function TeacherView() {
       setCurrentMove(0);
       initialFenRef.current = chess.fen();
       setReveal(false); // Reset reveal
-      if (window.socket) window.socket.emit('reset_reveal', { gameId });
+      if (window.socket) window.socket.emit('reset_reveal', { gameId, password: getTeacherPassword() });
       // Broadcast board update
       pendingActionRef.current = { type: 'move', index: 0 };
 
@@ -422,7 +422,7 @@ export default function TeacherView() {
     const value = e.target.value;
     setInstructions(value);
     // Always emit using the singleton socket instance
-    socket.emit('instructions_update', { gameId, instructions: value });
+    socket.emit('instructions_update', { gameId, instructions: value, password: getTeacherPassword() });
   }
 
   // --- Layout per design: 10% | 16% | 36% | 28% | 10% ---

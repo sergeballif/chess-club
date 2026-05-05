@@ -58,8 +58,12 @@ export function retractVote(gameId, move, userId) {
   socket.emit('retract_vote', { gameId, move, userId });
 }
 
+export function getTeacherPassword() {
+  return sessionStorage.getItem('chess-club-teacher-pw') || '';
+}
+
 export function updateBoard(gameId, fen, moveHistory, initialFen) {
-  const payload = { gameId, fen, moveHistory };
+  const payload = { gameId, fen, moveHistory, password: getTeacherPassword() };
   if (initialFen) payload.initialFen = initialFen;
   console.log('[socket.js] updateBoard called:', payload);
   socket.emit('update_board', payload);
@@ -67,7 +71,7 @@ export function updateBoard(gameId, fen, moveHistory, initialFen) {
 }
 
 export function setMode(gameId, mode, reveal = false, timerLength, revealTime) {
-  const payload = { gameId, mode, reveal };
+  const payload = { gameId, mode, reveal, password: getTeacherPassword() };
   if (mode === 'game') {
     if (typeof timerLength === 'number') payload.timerLength = timerLength;
     if (typeof revealTime === 'number') payload.revealTime = revealTime;
