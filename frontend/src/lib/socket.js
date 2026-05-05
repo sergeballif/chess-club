@@ -4,8 +4,7 @@ console.log('[socket.js] Module loaded');
 
 import { io } from 'socket.io-client';
 
-// Set this to your deployed backend
-const SOCKET_URL = 'https://chess-club-backend-0mbw.onrender.com';
+const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || 'http://localhost:10000';
 
 // Singleton socket instance
 export const socket = io(SOCKET_URL, {
